@@ -8,4 +8,4 @@ The solver is built upon the Two-Phase Algorithm developed by Herbert Kociemba, 
 
 Other implementations might use different methods such as the beginner-friendly CFOP (Cross, F2L, OLL, PLL) method, Iterative Deepening A* (IDA*), or even reinforcement learning. 
 
-
+pour tester: python3 rubiks_simple.py
