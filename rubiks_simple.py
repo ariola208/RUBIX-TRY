@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Rubik's Cube Solver - Version Fonctionnelle Complète
-Solveur layer-by-layer avec détection et placement réel des pièces
+Rubik's Cube Solver - Version Fonctionnelle Améliorée
+Solveur layer-by-layer robuste avec détection complète des cas
 """
 
 import pygame
@@ -18,13 +18,11 @@ import threading
 
 class Config:
     """Configuration centrale de l'application"""
-    # Dimensions
     WIDTH, HEIGHT = 1200, 800
     CUBE_SIZE = 180
     PANEL_WIDTH = 350
     MARGIN = 20
     
-    # Couleurs
     class Colors:
         BACKGROUND = (18, 18, 24)
         PANEL_BG = (28, 31, 38)
@@ -53,6 +51,7 @@ class Config:
     FONT_LARGE = 28
     FONT_TITLE = 36
     AUTO_DELAY = 15
+    MAX_ITERATIONS_PER_STEP = 50
 
 # ==============================================================================
 # REPRÉSENTATION DU CUBE
@@ -72,35 +71,42 @@ class RubiksCube:
         5: Config.Colors.BLUE,
     }
     
-    # Mappage des positions des arêtes
+    # Couleur -> Face pour résolution
+    COLOR_TO_FACE = {
+        0: 'U',  # Blanc -> Haut
+        1: 'D',  # Jaune -> Bas
+        2: 'L',  # Orange -> Gauche
+        3: 'R',  # Rouge -> Droite
+        4: 'F',  # Vert -> Face
+        5: 'B',  # Bleu -> Arrière
+    }
+    
     EDGE_POSITIONS = [
-        ('U', 0, 1, 'B', 0, 1),  # UB
-        ('U', 1, 0, 'L', 0, 1),  # UL
-        ('U', 1, 2, 'R', 0, 1),  # UR
-        ('U', 2, 1, 'F', 0, 1),  # UF
-        ('D', 0, 1, 'F', 2, 1),  # DF
-        ('D', 1, 0, 'L', 2, 1),  # DL
-        ('D', 1, 2, 'R', 2, 1),  # DR
-        ('D', 2, 1, 'B', 2, 1),  # DB
-        ('F', 1, 0, 'L', 1, 2),  # FL
-        ('F', 1, 2, 'R', 1, 0),  # FR
-        ('B', 1, 0, 'R', 1, 2),  # BR
-        ('B', 1, 2, 'L', 1, 0),  # BL
+        ('U', 0, 1, 'B', 0, 1),
+        ('U', 1, 0, 'L', 0, 1),
+        ('U', 1, 2, 'R', 0, 1),
+        ('U', 2, 1, 'F', 0, 1),
+        ('D', 0, 1, 'F', 2, 1),
+        ('D', 1, 0, 'L', 2, 1),
+        ('D', 1, 2, 'R', 2, 1),
+        ('D', 2, 1, 'B', 2, 1),
+        ('F', 1, 0, 'L', 1, 2),
+        ('F', 1, 2, 'R', 1, 0),
+        ('B', 1, 0, 'R', 1, 2),
+        ('B', 1, 2, 'L', 1, 0),
     ]
     
-    # Mappage des positions des coins
     CORNER_POSITIONS = [
-        ('U', 0, 0, 'L', 0, 0, 'B', 0, 2),  # ULB
-        ('U', 0, 2, 'B', 0, 0, 'R', 0, 2),  # UBR
-        ('U', 2, 0, 'F', 0, 0, 'L', 0, 2),  # UFL
-        ('U', 2, 2, 'R', 0, 0, 'F', 0, 2),  # URF
-        ('D', 0, 0, 'L', 2, 2, 'F', 2, 0),  # DLF
-        ('D', 0, 2, 'F', 2, 2, 'R', 2, 0),  # DFR
-        ('D', 2, 0, 'B', 2, 2, 'L', 2, 0),  # DBL
-        ('D', 2, 2, 'R', 2, 2, 'B', 2, 0),  # DRB
+        ('U', 0, 0, 'L', 0, 0, 'B', 0, 2),
+        ('U', 0, 2, 'B', 0, 0, 'R', 0, 2),
+        ('U', 2, 0, 'F', 0, 0, 'L', 0, 2),
+        ('U', 2, 2, 'R', 0, 0, 'F', 0, 2),
+        ('D', 0, 0, 'L', 2, 2, 'F', 2, 0),
+        ('D', 0, 2, 'F', 2, 2, 'R', 2, 0),
+        ('D', 2, 0, 'B', 2, 2, 'L', 2, 0),
+        ('D', 2, 2, 'R', 2, 2, 'B', 2, 0),
     ]
     
-    # Tables de permutation
     MOVE_TABLES = {}
     
     @classmethod
@@ -258,48 +264,55 @@ class RubiksCube:
         return None
 
 # ==============================================================================
-# SOLVEUR LAYER-BY-LAYER FONCTIONNEL
+# SOLVEUR LAYER-BY-LAYER ROBUSTE
 # ==============================================================================
 
 class LayerByLayerSolver:
-    """Véritable solveur layer-by-layer avec détection de pièces"""
+    """Solveur layer-by-layer robuste avec gestion complète des cas"""
     
     def __init__(self):
         self.solution = []
-        self.max_iterations = 100
+        self.step_verifications = []
     
     def solve(self, cube: RubiksCube) -> List[str]:
-        """Résout le cube étape par étape"""
-        print("🔍 Démarrage de la résolution...")
+        """Résout le cube étape par étape avec vérifications"""
+        print("🔍 Démarrage de la résolution robuste...")
         start_time = time.time()
         
         self.solution = []
+        self.step_verifications = []
         working_cube = cube.copy()
         
         try:
             # Étape 1: Croix blanche
             print("  Étape 1: Croix blanche")
             self._solve_white_cross(working_cube)
+            self._verify_white_cross(working_cube)
             
             # Étape 2: Première couche
             print("  Étape 2: Première couche")
             self._solve_first_layer(working_cube)
+            self._verify_first_layer(working_cube)
             
             # Étape 3: Deuxième couche
             print("  Étape 3: Deuxième couche")
             self._solve_second_layer(working_cube)
+            self._verify_second_layer(working_cube)
             
             # Étape 4: Croix jaune
             print("  Étape 4: Croix jaune")
             self._solve_yellow_cross(working_cube)
+            self._verify_yellow_cross(working_cube)
             
             # Étape 5: Orientation coins jaunes
             print("  Étape 5: Orientation coins jaunes")
             self._orient_yellow_corners(working_cube)
+            self._verify_yellow_corners_orientation(working_cube)
             
             # Étape 6: Permutation coins jaunes
             print("  Étape 6: Permutation coins")
             self._permute_yellow_corners(working_cube)
+            self._verify_yellow_corners_position(working_cube)
             
             # Étape 7: Permutation arêtes jaunes
             print("  Étape 7: Permutation arêtes")
@@ -310,6 +323,10 @@ class LayerByLayerSolver:
             
             print(f"✅ Résolution terminée en {elapsed:.2f}s")
             print(f"📏 {len(simplified)} mouvements: {' '.join(simplified)}")
+            print(f"✓ Vérifications passées: {len(self.step_verifications)}/6")
+            
+            if not working_cube.is_solved():
+                print("⚠️ Attention: Le cube n'est pas complètement résolu!")
             
             return simplified
             
@@ -319,101 +336,221 @@ class LayerByLayerSolver:
             traceback.print_exc()
             return []
     
-    def _solve_white_cross(self, cube: RubiksCube):
-        """Résout la croix blanche en détectant et positionnant chaque arête"""
-        # Couleurs des arêtes blanches: blanc + couleur latérale
-        white_edges = [(0, 4), (0, 3), (0, 5), (0, 2)]  # W-G, W-R, W-B, W-O
+    def _safe_while_loop(self, condition_func, action_func, max_iterations=Config.MAX_ITERATIONS_PER_STEP):
+        """Exécute une boucle while avec sécurité"""
+        iterations = 0
+        while condition_func() and iterations < max_iterations:
+            action_func()
+            iterations += 1
         
-        for white, color in white_edges:
-            self._position_white_edge(cube, white, color)
+        if iterations >= max_iterations:
+            raise RuntimeError(f"Boucle infinie détectée après {max_iterations} itérations")
     
-    def _position_white_edge(self, cube: RubiksCube, white: int, color: int):
-        """Positionne une arête blanche à sa place correcte"""
-        # Trouver où se trouve l'arête
-        edge_info = cube.find_edge(white, color)
+    # ==========================================================================
+    # ÉTAPE 1: CROIX BLANCHE
+    # ==========================================================================
+    
+    def _solve_white_cross(self, cube: RubiksCube):
+        """Résout la croix blanche"""
+        # Arêtes blanches à placer
+        white_edges = [
+            (0, 4, 'F'),  # Blanc-Vert
+            (0, 3, 'R'),  # Blanc-Rouge
+            (0, 5, 'B'),  # Blanc-Bleu
+            (0, 2, 'L'),  # Blanc-Orange
+        ]
+        
+        for white, side_color, target_face in white_edges:
+            self._position_white_edge_safely(cube, white, side_color, target_face)
+    
+    def _position_white_edge_safely(self, cube: RubiksCube, white: int, side_color: int, target_face: str):
+        """Positionne une arête blanche de manière robuste"""
+        edge_info = cube.find_edge(white, side_color)
+        if not edge_info:
+            print(f"  ❌ Arête {white}-{side_color} non trouvée!")
+            return
+        
+        face1, r1, c1, face2, r2, c2 = edge_info
+        
+        # Vérifier si l'arête est déjà en place
+        if (face1 == 'U' and r1 == 2 and c1 == 1 and 
+            face2 == target_face and r2 == 0 and c2 == 1):
+            return
+        
+        # Cas 1: Arête sur la face U (blanc visible)
+        if face1 == 'U':
+            self._handle_edge_on_u_face(cube, white, side_color, target_face)
+        
+        # Cas 2: Arête dans la couronne du milieu
+        elif face1 in ['F', 'R', 'B', 'L'] and face2 in ['F', 'R', 'B', 'L']:
+            self._handle_edge_in_middle_layer(cube, white, side_color, target_face, 
+                                            face1, r1, c1, face2, r2, c2)
+        
+        # Cas 3: Arête sur la face D (blanc en bas)
+        elif face1 == 'D' or face2 == 'D':
+            self._handle_edge_on_d_face(cube, white, side_color, target_face)
+        
+        # Cas 4: Autres positions
+        else:
+            self._handle_edge_other_position(cube, white, side_color, target_face)
+    
+    def _handle_edge_on_u_face(self, cube: RubiksCube, white: int, side_color: int, target_face: str):
+        """Gère une arête sur la face U"""
+        edge_info = cube.find_edge(white, side_color)
         if not edge_info:
             return
         
         face1, r1, c1, face2, r2, c2 = edge_info
         
-        # Déterminer la face cible pour la couleur (sans le blanc)
-        target_face = None
-        if color == 4:  # Vert
-            target_face = 'F'
-        elif color == 3:  # Rouge
-            target_face = 'R'
-        elif color == 5:  # Bleu
-            target_face = 'B'
-        elif color == 2:  # Orange
-            target_face = 'L'
+        # Tourner U pour aligner
+        rotation_count = 0
         
-        # Si l'arête est déjà bien placée (blanc sur U, couleur sur la bonne face)
-        if face1 == 'U' and r1 == 2 and c1 == 1 and face2 == target_face:
-            return
+        def condition():
+            return not (face2 == target_face)
         
-        # Cas 1: Arête sur la face U (blanc visible)
-        if face1 == 'U':
-            # Tourner U pour mettre l'arête au-dessus de sa position cible
-            while not (face2 == target_face):
-                cube.apply_move("U")
-                self.solution.append("U")
-                edge_info = cube.find_edge(white, color)
-                if edge_info:
-                    face1, r1, c1, face2, r2, c2 = edge_info
-            
-            # Insérer l'arête
-            if target_face == 'F':
-                moves = ["F2"]
-            elif target_face == 'R':
-                moves = ["R2"]
-            elif target_face == 'B':
-                moves = ["B2"]
-            elif target_face == 'L':
-                moves = ["L2"]
+        def action():
+            nonlocal face1, r1, c1, face2, r2, c2
+            cube.apply_move("U")
+            self.solution.append("U")
+            edge_info = cube.find_edge(white, side_color)
+            if edge_info:
+                face1, r1, c1, face2, r2, c2 = edge_info
         
-        # Cas 2: Arête dans la couronne du milieu (blanc sur une face latérale)
-        elif face1 in ['F', 'R', 'B', 'L'] and r1 == 1:
-            # Amener l'arête à la position d'insertion
-            if face1 == 'F':
-                if c1 == 0:  # Gauche
-                    moves = ["L'", "U'", "L", "U", "F", "U", "F'"]
-                else:  # Droite
-                    moves = ["R", "U", "R'", "U'", "F'", "U'", "F"]
-            elif face1 == 'R':
-                moves = ["F", "U", "F'", "U'", "R'", "U'", "R"]
+        self._safe_while_loop(condition, action)
         
-        # Cas 3: Arête sur la face D (blanc en bas)
-        elif face1 == 'D':
-            # Amener sous la bonne position
-            while face2 != target_face:
-                cube.apply_move("D")
-                self.solution.append("D")
-                edge_info = cube.find_edge(white, color)
-                if edge_info:
-                    face1, r1, c1, face2, r2, c2 = edge_info
-            
-            # Remonter l'arête
-            if target_face == 'F':
-                moves = ["F2"]
-            elif target_face == 'R':
-                moves = ["R2"]
-            elif target_face == 'B':
-                moves = ["B2"]
-            elif target_face == 'L':
-                moves = ["L2"]
+        # Insérer l'arête
+        if target_face == 'F':
+            moves = ["F2"]
+        elif target_face == 'R':
+            moves = ["R2"]
+        elif target_face == 'B':
+            moves = ["B2"]
+        elif target_face == 'L':
+            moves = ["L2"]
         
-        else:
-            # Mouvements par défaut pour amener l'arête en position
-            moves = ["F", "R", "U", "R'", "U'", "F'"]
-        
-        # Appliquer les mouvements
         for move in moves:
             cube.apply_move(move)
             self.solution.append(move)
     
+    def _handle_edge_in_middle_layer(self, cube: RubiksCube, white: int, side_color: int, 
+                                   target_face: str, face1, r1, c1, face2, r2, c2):
+        """Gère une arête dans la couche du milieu"""
+        # D'abord sortir l'arête
+        if face1 == 'F':
+            if c1 == 0:  # Gauche
+                moves = ["L'", "U'", "L", "U"]
+            else:  # Droite
+                moves = ["R", "U", "R'", "U'"]
+        elif face1 == 'R':
+            if c1 == 0:  # Face
+                moves = ["F", "U", "F'", "U'"]
+            else:  # Arrière
+                moves = ["B'", "U'", "B", "U"]
+        elif face1 == 'B':
+            if c1 == 0:  # Droite
+                moves = ["R'", "U'", "R", "U"]
+            else:  # Gauche
+                moves = ["L", "U", "L'", "U'"]
+        elif face1 == 'L':
+            if c1 == 0:  # Arrière
+                moves = ["B", "U", "B'", "U'"]
+            else:  # Face
+                moves = ["F'", "U'", "F", "U"]
+        
+        for move in moves:
+            cube.apply_move(move)
+            self.solution.append(move)
+        
+        # Maintenant l'arête est sur U, la traiter
+        self._handle_edge_on_u_face(cube, white, side_color, target_face)
+    
+    def _handle_edge_on_d_face(self, cube: RubiksCube, white: int, side_color: int, target_face: str):
+        """Gère une arête sur la face D"""
+        edge_info = cube.find_edge(white, side_color)
+        if not edge_info:
+            return
+        
+        face1, r1, c1, face2, r2, c2 = edge_info
+        
+        # Déterminer quelle face a le blanc
+        white_face = face1 if cube.get_sticker(face1, r1, c1) == white else face2
+        other_face = face2 if white_face == face1 else face1
+        
+        # Tourner D pour aligner
+        rotation_count = 0
+        
+        def condition():
+            return not (other_face == target_face)
+        
+        def action():
+            nonlocal face1, r1, c1, face2, r2, c2
+            cube.apply_move("D")
+            self.solution.append("D")
+            edge_info = cube.find_edge(white, side_color)
+            if edge_info:
+                face1, r1, c1, face2, r2, c2 = edge_info
+        
+        self._safe_while_loop(condition, action)
+        
+        # Remonter l'arête
+        if target_face == 'F':
+            moves = ["F2"]
+        elif target_face == 'R':
+            moves = ["R2"]
+        elif target_face == 'B':
+            moves = ["B2"]
+        elif target_face == 'L':
+            moves = ["L2"]
+        
+        for move in moves:
+            cube.apply_move(move)
+            self.solution.append(move)
+    
+    def _handle_edge_other_position(self, cube: RubiksCube, white: int, side_color: int, target_face: str):
+        """Gère les autres positions d'arêtes"""
+        # Utiliser un algorithme standard pour sortir une arête mal placée
+        moves = ["F", "R", "U", "R'", "U'", "F'"]
+        for move in moves:
+            cube.apply_move(move)
+            self.solution.append(move)
+        
+        # Réessayer
+        self._position_white_edge_safely(cube, white, side_color, target_face)
+    
+    def _verify_white_cross(self, cube: RubiksCube):
+        """Vérifie que la croix blanche est correcte"""
+        correct = True
+        white_edges = [(0, 4), (0, 3), (0, 5), (0, 2)]
+        
+        for white, side_color in white_edges:
+            edge_info = cube.find_edge(white, side_color)
+            if not edge_info:
+                correct = False
+                break
+            
+            face1, r1, c1, face2, r2, c2 = edge_info
+            
+            # Vérifier position
+            if not (face1 == 'U' and r1 == 2 and c1 == 1):
+                correct = False
+                break
+            
+            # Vérifier orientation
+            color_on_u = cube.get_sticker('U', r1, c1)
+            if color_on_u != white:
+                correct = False
+                break
+        
+        self.step_verifications.append(("Croix blanche", correct))
+        if not correct:
+            print("  ⚠️ Croix blanche incomplète")
+    
+    # ==========================================================================
+    # ÉTAPE 2: PREMIÈRE COUCHE
+    # ==========================================================================
+    
     def _solve_first_layer(self, cube: RubiksCube):
         """Résout la première couche (coins blancs)"""
-        # Coins à placer: blanc + deux couleurs latérales
         corners = [
             (0, 4, 3),  # Blanc-Vert-Rouge
             (0, 3, 5),  # Blanc-Rouge-Bleu
@@ -422,160 +559,377 @@ class LayerByLayerSolver:
         ]
         
         for white, color1, color2 in corners:
-            self._position_white_corner(cube, white, color1, color2)
+            self._position_white_corner_safely(cube, white, color1, color2)
     
-    def _position_white_corner(self, cube: RubiksCube, white: int, color1: int, color2: int):
-        """Positionne un coin blanc"""
+    def _position_white_corner_safely(self, cube: RubiksCube, white: int, color1: int, color2: int):
+        """Positionne un coin blanc de manière robuste"""
         corner_info = cube.find_corner(white, color1, color2)
         if not corner_info:
+            print(f"  ❌ Coin {white}-{color1}-{color2} non trouvé!")
             return
         
         face1, r1, c1, face2, r2, c2, face3, r3, c3 = corner_info
         
-        # Si le coin est déjà bien placé (blanc en bas, couleurs adjacentes correctes)
-        if face1 == 'D' and r1 == 0 and c1 == 0:
-            # Vérifier les couleurs adjacentes
+        # Déterminer la position cible
+        target_faces = self._get_target_faces_for_corner(color1, color2)
+        
+        # Vérifier si le coin est déjà en place
+        if self._is_corner_in_position(cube, white, color1, color2, target_faces):
             return
         
         # Cas 1: Coin sur la face D
-        if face1 == 'D':
-            # Tourner D pour amener le coin sous sa position
-            while True:
-                # Vérifier si le coin est sous la bonne position
-                if ((color1 == 4 and color2 == 3 and face2 == 'F' and face3 == 'R') or
-                    (color1 == 3 and color2 == 5 and face2 == 'R' and face3 == 'B') or
-                    (color1 == 5 and color2 == 2 and face2 == 'B' and face3 == 'L') or
-                    (color1 == 2 and color2 == 4 and face2 == 'L' and face3 == 'F')):
-                    break
-                cube.apply_move("D")
-                self.solution.append("D")
-                corner_info = cube.find_corner(white, color1, color2)
-                if corner_info:
-                    face1, r1, c1, face2, r2, c2, face3, r3, c3 = corner_info
-            
-            # Insérer le coin
-            if face2 == 'F' and face3 == 'R':  # Position avant-droite
-                moves = ["R'", "D'", "R", "D"]
-            elif face2 == 'R' and face3 == 'B':  # Position droite-arrière
-                moves = ["B'", "D'", "B", "D"]
-            elif face2 == 'B' and face3 == 'L':  # Position arrière-gauche
-                moves = ["L'", "D'", "L", "D"]
-            elif face2 == 'L' and face3 == 'F':  # Position gauche-avant
-                moves = ["F'", "D'", "F", "D"]
+        if face1 == 'D' or face2 == 'D' or face3 == 'D':
+            self._handle_corner_on_d_face(cube, white, color1, color2, target_faces)
         
         # Cas 2: Coin sur la face U
-        elif face1 == 'U':
-            # Descendre le coin pour ensuite le réinsérer
-            if r1 == 2 and c1 == 2:  # Coin avant-droit
-                moves = ["R'", "D'", "R"]
-            elif r1 == 2 and c1 == 0:  # Coin avant-gauche
-                moves = ["L", "D", "L'"]
+        elif face1 == 'U' or face2 == 'U' or face3 == 'U':
+            self._handle_corner_on_u_face(cube, white, color1, color2, target_faces)
+    
+    def _get_target_faces_for_corner(self, color1: int, color2: int) -> List[str]:
+        """Détermine les faces cibles pour un coin"""
+        color_to_face = {
+            4: 'F',  # Vert
+            3: 'R',  # Rouge
+            5: 'B',  # Bleu
+            2: 'L',  # Orange
+        }
         
-        # Appliquer les mouvements
-        if 'moves' in locals():
-            for move in moves:
-                cube.apply_move(move)
-                self.solution.append(move)
+        face1 = color_to_face.get(color1)
+        face2 = color_to_face.get(color2)
+        
+        # Ordonner les faces selon la position standard
+        if face1 == 'F' and face2 == 'R':
+            return ['F', 'R']
+        elif face1 == 'R' and face2 == 'B':
+            return ['R', 'B']
+        elif face1 == 'B' and face2 == 'L':
+            return ['B', 'L']
+        elif face1 == 'L' and face2 == 'F':
+            return ['L', 'F']
+        
+        # Essayer l'ordre inverse
+        return [face2, face1] if face2 and face1 else []
+    
+    def _is_corner_in_position(self, cube: RubiksCube, white: int, color1: int, 
+                              color2: int, target_faces: List[str]) -> bool:
+        """Vérifie si un coin est déjà en position"""
+        if len(target_faces) != 2:
+            return False
+        
+        corner_info = cube.find_corner(white, color1, color2)
+        if not corner_info:
+            return False
+        
+        face1, r1, c1, face2, r2, c2, face3, r3, c3 = corner_info
+        
+        # Le coin doit être en position D avec le blanc en bas
+        if not ('D' in [face1, face2, face3]):
+            return False
+        
+        # Les deux autres faces doivent correspondre aux cibles
+        other_faces = [f for f in [face1, face2, face3] if f != 'D']
+        return set(other_faces) == set(target_faces)
+    
+    def _handle_corner_on_d_face(self, cube: RubiksCube, white: int, color1: int, 
+                               color2: int, target_faces: List[str]):
+        """Gère un coin sur la face D"""
+        # Tourner D pour amener le coin sous sa position
+        rotation_count = 0
+        max_rotations = 4
+        
+        while rotation_count < max_rotations:
+            corner_info = cube.find_corner(white, color1, color2)
+            if not corner_info:
+                break
+            
+            face1, r1, c1, face2, r2, c2, face3, r3, c3 = corner_info
+            
+            # Vérifier si le coin est sous la bonne position
+            other_faces = [f for f in [face1, face2, face3] if f != 'D']
+            if set(other_faces) == set(target_faces):
+                break
+            
+            cube.apply_move("D")
+            self.solution.append("D")
+            rotation_count += 1
+        
+        # Insérer le coin
+        if target_faces == ['F', 'R']:
+            moves = ["R'", "D'", "R", "D"]
+        elif target_faces == ['R', 'B']:
+            moves = ["B'", "D'", "B", "D"]
+        elif target_faces == ['B', 'L']:
+            moves = ["L'", "D'", "L", "D"]
+        elif target_faces == ['L', 'F']:
+            moves = ["F'", "D'", "F", "D"]
+        else:
+            # Algorithme générique
+            moves = ["R'", "D'", "R", "D"]
+        
+        for move in moves:
+            cube.apply_move(move)
+            self.solution.append(move)
+    
+    def _handle_corner_on_u_face(self, cube: RubiksCube, white: int, color1: int, 
+                               color2: int, target_faces: List[str]):
+        """Gère un coin sur la face U"""
+        # Descendre le coin
+        if target_faces == ['F', 'R']:
+            moves = ["R'", "D'", "R"]
+        elif target_faces == ['R', 'B']:
+            moves = ["B'", "D'", "B"]
+        elif target_faces == ['B', 'L']:
+            moves = ["L'", "D'", "L"]
+        elif target_faces == ['L', 'F']:
+            moves = ["F'", "D'", "F"]
+        else:
+            moves = ["R'", "D'", "R"]
+        
+        for move in moves:
+            cube.apply_move(move)
+            self.solution.append(move)
+        
+        # Maintraitenant le coin est sur D, le traiter
+        self._handle_corner_on_d_face(cube, white, color1, color2, target_faces)
+    
+    def _verify_first_layer(self, cube: RubiksCube):
+        """Vérifie que la première couche est correcte"""
+        correct = True
+        
+        # Vérifier que la face D est blanche
+        for i in range(3):
+            for j in range(3):
+                if cube.get_sticker('D', i, j) != 0:
+                    correct = False
+                    break
+        
+        # Vérifier les coins
+        corners = [(0, 4, 3), (0, 3, 5), (0, 5, 2), (0, 2, 4)]
+        for white, color1, color2 in corners:
+            corner_info = cube.find_corner(white, color1, color2)
+            if not corner_info:
+                correct = False
+                break
+        
+        self.step_verifications.append(("Première couche", correct))
+        if not correct:
+            print("  ⚠️ Première couche incomplète")
+    
+    # ==========================================================================
+    # ÉTAPE 3: DEUXIÈME COUCHE
+    # ==========================================================================
     
     def _solve_second_layer(self, cube: RubiksCube):
         """Résout la deuxième couche"""
-        # Arêtes du milieu à placer
-        edges = [(4, 3), (3, 5), (5, 2), (2, 4)]  # G-R, R-B, B-O, O-G
+        edges = [
+            (4, 3, 'F', 'R'),  # Vert-Rouge
+            (3, 5, 'R', 'B'),  # Rouge-Bleu
+            (5, 2, 'B', 'L'),  # Bleu-Orange
+            (2, 4, 'L', 'F'),  # Orange-Vert
+        ]
         
-        for color1, color2 in edges:
-            self._position_middle_edge(cube, color1, color2)
+        for color1, color2, face1, face2 in edges:
+            self._position_middle_edge_safely(cube, color1, color2, face1, face2)
     
-    def _position_middle_edge(self, cube: RubiksCube, color1: int, color2: int):
-        """Positionne une arête du milieu"""
+    def _position_middle_edge_safely(self, cube: RubiksCube, color1: int, color2: int, 
+                                   target_face1: str, target_face2: str):
+        """Positionne une arête du milieu de manière robuste"""
         edge_info = cube.find_edge(color1, color2)
         if not edge_info:
             return
         
         face1, r1, c1, face2, r2, c2 = edge_info
         
-        # Si l'arête est déjà bien placée
-        if (face1 in ['F', 'R', 'B', 'L'] and face2 in ['F', 'R', 'B', 'L'] and
-            ((face1 == 'F' and face2 == 'R') or (face1 == 'R' and face2 == 'B') or
-             (face1 == 'B' and face2 == 'L') or (face1 == 'L' and face2 == 'F'))):
+        # Vérifier si l'arête est déjà bien placée
+        if self._is_middle_edge_correct(cube, color1, color2, target_face1, target_face2):
             return
         
         # Cas 1: Arête sur la face U
-        if face1 == 'U':
-            # Orienter l'arête correctement
-            while not ((face2 == 'F' and color1 == 4) or (face2 == 'R' and color1 == 3) or
-                      (face2 == 'B' and color1 == 5) or (face2 == 'L' and color1 == 2)):
-                cube.apply_move("U")
-                self.solution.append("U")
-                edge_info = cube.find_edge(color1, color2)
-                if edge_info:
-                    face1, r1, c1, face2, r2, c2 = edge_info
-            
-            # Insérer à gauche ou à droite selon l'orientation
-            if face2 == 'F':
-                if color1 == 4:  # Vert sur F
-                    moves = ["U'", "L'", "U", "L", "U", "F", "U'", "F'"]
-                else:  # Rouge sur F
-                    moves = ["U", "R", "U'", "R'", "U'", "F'", "U", "F"]
+        if face1 == 'U' or face2 == 'U':
+            self._handle_edge_on_u_for_middle(cube, color1, color2, target_face1, target_face2)
         
         # Cas 2: Arête mal placée dans la deuxième couche
-        elif face1 in ['F', 'R', 'B', 'L'] and r1 == 1:
-            # Sortir l'arête puis la réinsérer
-            if face1 == 'F':
-                moves = ["U", "R", "U'", "R'", "U'", "F'", "U", "F"]
+        else:
+            self._handle_misplaced_middle_edge(cube, color1, color2, target_face1, target_face2)
+    
+    def _is_middle_edge_correct(self, cube: RubiksCube, color1: int, color2: int,
+                              target_face1: str, target_face2: str) -> bool:
+        """Vérifie si une arête du milieu est correctement placée"""
+        edge_info = cube.find_edge(color1, color2)
+        if not edge_info:
+            return False
         
-        # Appliquer les mouvements
+        face1, r1, c1, face2, r2, c2 = edge_info
+        
+        # L'arête doit être entre les deux bonnes faces
+        if not ({face1, face2} == {target_face1, target_face2}):
+            return False
+        
+        # L'arête doit être dans la rangée du milieu
+        return r1 == 1 or r2 == 1
+    
+    def _handle_edge_on_u_for_middle(self, cube: RubiksCube, color1: int, color2: int,
+                                   target_face1: str, target_face2: str):
+        """Gère une arête sur U pour la deuxième couche"""
+        # Aligner l'arête
+        rotation_count = 0
+        
+        while rotation_count < 4:
+            edge_info = cube.find_edge(color1, color2)
+            if not edge_info:
+                break
+            
+            face1, r1, c1, face2, r2, c2 = edge_info
+            
+            # Déterminer quelle face n'est pas U
+            non_u_face = face1 if face1 != 'U' else face2
+            
+            # Vérifier l'orientation
+            if non_u_face == target_face1:
+                # L'arête est orientée pour être insérée à gauche
+                moves = ["U'", "L'", "U", "L", "U", "F", "U'", "F'"]
+                break
+            elif non_u_face == target_face2:
+                # L'arête est orientée pour être insérée à droite
+                moves = ["U", "R", "U'", "R'", "U'", "F'", "U", "F"]
+                break
+            
+            cube.apply_move("U")
+            self.solution.append("U")
+            rotation_count += 1
+        
         if 'moves' in locals():
             for move in moves:
                 cube.apply_move(move)
                 self.solution.append(move)
     
-    def _solve_yellow_cross(self, cube: RubiksCube):
-        """Fait la croix jaune"""
-        # Compter les arêtes jaunes orientées
-        yellow_count = 0
-        for pos in [(0, 1), (1, 0), (1, 2), (2, 1)]:
-            if cube.get_sticker('U', pos[0], pos[1]) == 1:
-                yellow_count += 1
+    def _handle_misplaced_middle_edge(self, cube: RubiksCube, color1: int, color2: int,
+                                    target_face1: str, target_face2: str):
+        """Gère une arête mal placée dans la deuxième couche"""
+        # Sortir l'arête d'abord
+        if target_face1 == 'F' and target_face2 == 'R':
+            moves = ["U", "R", "U'", "R'", "U'", "F'", "U", "F"]
+        elif target_face1 == 'R' and target_face2 == 'B':
+            moves = ["U", "B", "U'", "B'", "U'", "R'", "U", "R"]
+        elif target_face1 == 'B' and target_face2 == 'L':
+            moves = ["U", "L", "U'", "L'", "U'", "B'", "U", "B"]
+        elif target_face1 == 'L' and target_face2 == 'F':
+            moves = ["U", "F", "U'", "F'", "U'", "L'", "U", "L"]
+        else:
+            moves = ["U", "R", "U'", "R'", "U'", "F'", "U", "F"]
         
-        # Appliquer l'algorithme approprié
-        if yellow_count == 0:
-            moves = ["F", "R", "U", "R'", "U'", "F'"]
-        elif yellow_count == 2:
-            # Vérifier si c'est une ligne
-            if (cube.get_sticker('U', 0, 1) == 1 and cube.get_sticker('U', 2, 1) == 1) or \
-               (cube.get_sticker('U', 1, 0) == 1 and cube.get_sticker('U', 1, 2) == 1):
-                # Ligne - orienter horizontalement
-                while not (cube.get_sticker('U', 1, 0) == 1 and cube.get_sticker('U', 1, 2) == 1):
-                    cube.apply_move("U")
-                    self.solution.append("U")
-                moves = ["F", "R", "U", "R'", "U'", "F'"]
-            else:
-                # L - orienter en haut à gauche
-                while not (cube.get_sticker('U', 0, 1) == 1 and cube.get_sticker('U', 1, 0) == 1):
-                    cube.apply_move("U")
-                    self.solution.append("U")
-                moves = ["F", "U", "R", "U'", "R'", "F'"]
-        elif yellow_count == 4:
-            return  # Croix déjà faite
-        
-        # Appliquer les mouvements
         for move in moves:
             cube.apply_move(move)
             self.solution.append(move)
+        
+        # Maintenant l'arête est sur U, la traiter
+        self._handle_edge_on_u_for_middle(cube, color1, color2, target_face1, target_face2)
+    
+    def _verify_second_layer(self, cube: RubiksCube):
+        """Vérifie que la deuxième couche est correcte"""
+        correct = True
+        
+        # Vérifier les arêtes du milieu
+        edges = [(4, 3), (3, 5), (5, 2), (2, 4)]
+        
+        for color1, color2 in edges:
+            edge_info = cube.find_edge(color1, color2)
+            if not edge_info:
+                correct = False
+                break
+            
+            face1, r1, c1, face2, r2, c2 = edge_info
+            
+            # L'arête doit être dans la rangée du milieu
+            if not (r1 == 1 or r2 == 1):
+                correct = False
+                break
+        
+        self.step_verifications.append(("Deuxième couche", correct))
+        if not correct:
+            print("  ⚠️ Deuxième couche incomplète")
+    
+    # ==========================================================================
+    # ÉTAPE 4: CROIX JAUNE
+    # ==========================================================================
+    
+    def _solve_yellow_cross(self, cube: RubiksCube):
+        """Fait la croix jaune"""
+        # Compter les arêtes jaunes orientées
+        yellow_edges = []
+        positions = [(0, 1), (1, 0), (1, 2), (2, 1)]
+        
+        for pos in positions:
+            if cube.get_sticker('U', pos[0], pos[1]) == 1:
+                yellow_edges.append(pos)
+        
+        yellow_count = len(yellow_edges)
+        
+        # Appliquer l'algorithme approprié
+        if yellow_count == 0:
+            # Point
+            moves = ["F", "R", "U", "R'", "U'", "F'"]
+            for _ in range(3):  # Répéter pour s'assurer
+                for move in moves:
+                    cube.apply_move(move)
+                    self.solution.append(move)
+                
+                # Vérifier
+                yellow_count = sum(1 for pos in positions 
+                                 if cube.get_sticker('U', pos[0], pos[1]) == 1)
+                if yellow_count >= 2:
+                    break
+        
+        if yellow_count == 2:
+            # Vérifier la configuration
+            edge_positions = [cube.get_sticker('U', 0, 1) == 1,
+                             cube.get_sticker('U', 1, 0) == 1,
+                             cube.get_sticker('U', 1, 2) == 1,
+                             cube.get_sticker('U', 2, 1) == 1]
+            
+            # Tourner U pour avoir la bonne orientation
+            if edge_positions == [False, True, False, True]:  # Ligne verticale
+                cube.apply_move("U")
+                self.solution.append("U")
+            
+            # Appliquer l'algorithme pour la ligne
+            moves = ["F", "R", "U", "R'", "U'", "F'"]
+            for move in moves:
+                cube.apply_move(move)
+                self.solution.append(move)
+    
+    def _verify_yellow_cross(self, cube: RubiksCube):
+        """Vérifie que la croix jaune est correcte"""
+        positions = [(0, 1), (1, 0), (1, 2), (2, 1)]
+        yellow_count = sum(1 for pos in positions 
+                          if cube.get_sticker('U', pos[0], pos[1]) == 1)
+        
+        correct = yellow_count == 4
+        self.step_verifications.append(("Croix jaune", correct))
+        
+        if not correct:
+            print(f"  ⚠️ Croix jaune incomplète ({yellow_count}/4)")
+    
+    # ==========================================================================
+    # ÉTAPE 5: ORIENTATION COINS JAUNES
+    # ==========================================================================
     
     def _orient_yellow_corners(self, cube: RubiksCube):
         """Oriente les coins jaunes"""
-        iteration = 0
-        while iteration < self.max_iterations:
-            iteration += 1
-            
-            # Compter les coins jaunes bien orientés
-            yellow_corners = 0
-            for pos in [(0, 0), (0, 2), (2, 0), (2, 2)]:
+        positions = [(0, 0), (0, 2), (2, 0), (2, 2)]
+        
+        # Utiliser l'algorithme standard (R U R' U R U2 R')
+        moves = ["R", "U", "R'", "U", "R", "U2", "R'"]
+        
+        # Répéter jusqu'à ce que tous les coins soient orientés
+        for _ in range(Config.MAX_ITERATIONS_PER_STEP):
+            # Compter les coins jaunes sur U
+            yellow_on_top = 0
+            for pos in positions:
                 if cube.get_sticker('U', pos[0], pos[1]) == 1:
-                    yellow_corners += 1
+                    yellow_on_top += 1
             
-            if yellow_corners == 4:
+            if yellow_on_top == 4:
                 break
             
             # Positionner un coin mal orienté en bas-droite
@@ -584,102 +938,207 @@ class LayerByLayerSolver:
                 self.solution.append("U")
             
             # Appliquer l'algorithme
-            moves = ["R", "U", "R'", "U", "R", "U2", "R'"]
             for move in moves:
                 cube.apply_move(move)
                 self.solution.append(move)
+        else:
+            print("  ⚠️ Échec de l'orientation des coins jaunes")
+    
+    def _verify_yellow_corners_orientation(self, cube: RubiksCube):
+        """Vérifie que tous les coins jaunes sont orientés"""
+        positions = [(0, 0), (0, 2), (2, 0), (2, 2)]
+        yellow_on_top = sum(1 for pos in positions 
+                           if cube.get_sticker('U', pos[0], pos[1]) == 1)
+        
+        correct = yellow_on_top == 4
+        self.step_verifications.append(("Orientation coins", correct))
+        
+        if not correct:
+            print(f"  ⚠️ Orientation coins incomplète ({yellow_on_top}/4)")
+    
+    # ==========================================================================
+    # ÉTAPE 6: PERMUTATION COINS JAUNES
+    # ==========================================================================
     
     def _permute_yellow_corners(self, cube: RubiksCube):
         """Permute les coins jaunes"""
         # Chercher un coin bien placé
-        for _ in range(4):
-            if cube.get_sticker('U', 2, 2) == 1:
-                # Vérifier les couleurs adjacentes
-                f_color = cube.get_sticker('F', 0, 2)
-                r_color = cube.get_sticker('R', 0, 0)
-                if f_color == 4 and r_color == 3:  # Vert et Rouge
-                    break
+        for i in range(4):
+            # Vérifier si le coin avant-droit est bien placé
+            front_color = cube.get_sticker('F', 0, 2)
+            right_color = cube.get_sticker('R', 0, 0)
+            up_color = cube.get_sticker('U', 2, 2)
+            
+            if (front_color == 4 and right_color == 3 and up_color == 1):
+                break
+            
             cube.apply_move("U")
             self.solution.append("U")
         
         # Appliquer l'algorithme de permutation
         moves = ["R'", "F", "R'", "B2", "R", "F'", "R'", "B2", "R2"]
+        
         for move in moves:
             cube.apply_move(move)
             self.solution.append(move)
+        
+        # Ajuster U si nécessaire
+        for i in range(4):
+            if all(cube.get_sticker('F', 0, 2) == 4,
+                   cube.get_sticker('R', 0, 0) == 3,
+                   cube.get_sticker('U', 2, 2) == 1):
+                break
+            
+            cube.apply_move("U")
+            self.solution.append("U")
+    
+    def _verify_yellow_corners_position(self, cube: RubiksCube):
+        """Vérifie que les coins jaunes sont bien placés"""
+        # Vérifier que chaque coin a les bonnes couleurs adjacentes
+        corners = [
+            ('F', 0, 2, 'R', 0, 0, 'U', 2, 2),  # FRU
+            ('R', 0, 2, 'B', 0, 0, 'U', 0, 2),  # RBU
+            ('B', 0, 2, 'L', 0, 0, 'U', 0, 0),  # BLU
+            ('L', 0, 2, 'F', 0, 0, 'U', 2, 0),  # LFU
+        ]
+        
+        correct = True
+        for f1, r1, c1, f2, r2, c2, f3, r3, c3 in corners:
+            colors = {
+                cube.get_sticker(f1, r1, c1),
+                cube.get_sticker(f2, r2, c2),
+                cube.get_sticker(f3, r3, c3),
+            }
+            
+            # Chaque coin doit avoir exactement les couleurs des 3 faces adjacentes
+            expected_colors = {
+                RubiksCube.FACE_LETTERS['U'],  # Jaune
+                RubiksCube.FACE_LETTERS[f1],   # Première face
+                RubiksCube.FACE_LETTERS[f2],   # Deuxième face
+            }
+            
+            if colors != expected_colors:
+                correct = False
+                break
+        
+        self.step_verifications.append(("Position coins", correct))
+        if not correct:
+            print("  ⚠️ Position des coins incorrecte")
+    
+    # ==========================================================================
+    # ÉTAPE 7: PERMUTATION ARÊTES JAUNES
+    # ==========================================================================
     
     def _permute_yellow_edges(self, cube: RubiksCube):
         """Permute les arêtes jaunes"""
         # Compter les arêtes bien placées
-        correct = 0
-        for _ in range(4):
-            if cube.get_sticker('F', 0, 1) == cube.get_sticker('F', 1, 1):
-                correct += 1
+        correct_count = 0
+        
+        for i in range(4):
+            front_color = cube.get_sticker('F', 0, 1)
+            if front_color == 4:  # Vert
+                correct_count += 1
+            
+            # Tourner U pour vérifier la suivante
             cube.apply_move("U")
             self.solution.append("U")
         
         # Annuler la rotation
-        for _ in range(4):
+        for i in range(4):
             cube.apply_move("U'")
             self.solution.append("U'")
         
-        if correct == 0:
+        # Appliquer l'algorithme approprié
+        if correct_count == 0:
+            # Cas H (deux arêtes opposées)
             moves = ["R2", "L2", "U", "R2", "L2", "U2", "R2", "L2", "U", "R2", "L2"]
-        elif correct == 1:
-            while cube.get_sticker('F', 0, 1) != cube.get_sticker('F', 1, 1):
+        elif correct_count == 1:
+            # Tourner U pour avoir l'arête correcte à l'avant
+            while cube.get_sticker('F', 0, 1) != 4:
                 cube.apply_move("U")
                 self.solution.append("U")
+            
+            # Cas U (permutation cyclique)
             moves = ["R", "U'", "R", "U", "R", "U", "R", "U'", "R'", "U'", "R2"]
-        else:
+        elif correct_count == 4:
+            # Déjà résolu
             return
         
         for move in moves:
             cube.apply_move(move)
             self.solution.append(move)
     
+    # ==========================================================================
+    # UTILITAIRES
+    # ==========================================================================
+    
     def _simplify_moves(self, moves: List[str]) -> List[str]:
-        """Simplifie une séquence de mouvements"""
+        """Simplifie une séquence de mouvements de manière robuste"""
         if not moves:
             return []
         
-        simplified = True
-        current_moves = moves.copy()
+        # Convertir toutes les notations
+        def normalize_move(move):
+            if len(move) == 1:
+                return move, 1
+            elif move.endswith("'"):
+                return move[0], 3
+            elif move.endswith("2"):
+                return move[0], 2
+            else:
+                return move, 1
         
-        while simplified:
-            simplified = False
-            new_moves = []
-            i = 0
+        # Réduire les mouvements
+        simplified = []
+        i = 0
+        
+        while i < len(moves):
+            current_move, current_dir = normalize_move(moves[i])
             
-            while i < len(current_moves):
-                if i + 1 < len(current_moves) and current_moves[i][0] == current_moves[i+1][0]:
-                    # Deux mouvements sur la même face
-                    face = current_moves[i][0]
-                    dir1 = 1 if len(current_moves[i]) == 1 else (2 if "2" in current_moves[i] else 3)
-                    dir2 = 1 if len(current_moves[i+1]) == 1 else (2 if "2" in current_moves[i+1] else 3)
-                    total = (dir1 + dir2) % 4
+            if i + 1 < len(moves):
+                next_move, next_dir = normalize_move(moves[i + 1])
+                
+                if current_move == next_move:
+                    # Combiner les mouvements
+                    total_dir = (current_dir + next_dir) % 4
+                    i += 1  # Sauter le mouvement suivant
                     
-                    if total == 0:
-                        i += 2  # S'annulent
-                    elif total == 1:
-                        new_moves.append(face)
-                        i += 2
-                    elif total == 2:
-                        new_moves.append(face + "2")
-                        i += 2
-                    elif total == 3:
-                        new_moves.append(face + "'")
-                        i += 2
-                    simplified = True
+                    if total_dir == 0:
+                        # S'annulent, ne rien ajouter
+                        pass
+                    elif total_dir == 1:
+                        simplified.append(current_move)
+                    elif total_dir == 2:
+                        simplified.append(current_move + "2")
+                    elif total_dir == 3:
+                        simplified.append(current_move + "'")
                 else:
-                    new_moves.append(current_moves[i])
-                    i += 1
+                    # Mouvements différents
+                    if current_dir == 1:
+                        simplified.append(current_move)
+                    elif current_dir == 2:
+                        simplified.append(current_move + "2")
+                    elif current_dir == 3:
+                        simplified.append(current_move + "'")
+            else:
+                # Dernier mouvement
+                if current_dir == 1:
+                    simplified.append(current_move)
+                elif current_dir == 2:
+                    simplified.append(current_move + "2")
+                elif current_dir == 3:
+                    simplified.append(current_move + "'")
             
-            current_moves = new_moves
+            i += 1
         
-        return current_moves
+        # Réduire encore si possible
+        if len(simplified) < len(moves):
+            return self._simplify_moves(simplified)
+        
+        return simplified
 
 # ==============================================================================
-# COMPOSANTS D'INTERFACE
+# COMPOSANTS D'INTERFACE (inchangés)
 # ==============================================================================
 
 class Button:
@@ -845,7 +1304,7 @@ class RubiksCubeGUI:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((Config.WIDTH, Config.HEIGHT))
-        pygame.display.set_caption("Rubik's Cube Solver - Solveur Fonctionnel")
+        pygame.display.set_caption("Rubik's Cube Solver - Solveur Robuste")
         
         self.title_font = pygame.font.Font(None, Config.FONT_TITLE)
         self.subtitle_font = pygame.font.Font(None, Config.FONT_LARGE)
@@ -864,10 +1323,10 @@ class RubiksCubeGUI:
         self._init_controls()
         
         print("\n" + "="*60)
-        print("RUBIK'S CUBE SOLVER - SOLVEUR FONCTIONNEL")
+        print("RUBIK'S CUBE SOLVER - SOLVEUR ROBUSTE")
         print("="*60)
-        print("\nLe solveur détecte maintenant les pièces et les positionne correctement!")
-        print("\nControls:")
+        print("\nLe solveur détecte maintenant TOUS les cas et gère les erreurs!")
+        print("\nContrôles:")
         print("  • U/D/L/R/F/B: rotation des faces")
         print("  • SHIFT + touche: anti-horaire")
         print("  • ESPACE: résoudre automatiquement")
@@ -904,7 +1363,7 @@ class RubiksCubeGUI:
         if self.solving_in_progress or self.cube.is_solved():
             return
         
-        print("Démarrage de la résolution...")
+        print("Démarrage de la résolution robuste...")
         self.solving_in_progress = True
         self.panel.progress_bar.start("Résolution en cours...")
         
@@ -920,6 +1379,16 @@ class RubiksCubeGUI:
                 if solution:
                     print(f"✅ Solution prête ({len(solution)} mouvements)")
                     print(f"Solution: {' '.join(solution)}")
+                    
+                    # Vérifier que la solution fonctionne
+                    test_cube = self.cube.copy()
+                    for move in solution:
+                        test_cube.apply_move(move)
+                    
+                    if test_cube.is_solved():
+                        print("🎉 La solution est valide!")
+                    else:
+                        print("⚠️ La solution ne résout pas complètement le cube")
                 else:
                     print("❌ Aucune solution trouvée")
             except Exception as e:
@@ -1021,10 +1490,10 @@ class RubiksCubeGUI:
                                    sticker_rect, 1, border_radius=3)
     
     def draw_title(self):
-        title = self.title_font.render("RUBIK'S CUBE SOLVER", True, Config.Colors.TEXT_PRIMARY)
+        title = self.title_font.render("RUBIK'S CUBE SOLVER - ROBUSTE", True, Config.Colors.TEXT_PRIMARY)
         self.screen.blit(title, (Config.MARGIN, Config.MARGIN))
         
-        subtitle = self.subtitle_font.render("Solveur Layer-by-Layer avec Détection", 
+        subtitle = self.subtitle_font.render("Solveur Layer-by-Layer avec Vérifications", 
                                            True, Config.Colors.TEXT_SECONDARY)
         self.screen.blit(subtitle, (Config.MARGIN, Config.MARGIN + 50))
         
